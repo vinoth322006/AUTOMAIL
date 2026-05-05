@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>⚡ AUTOMAIL - Outreach Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        :root {
+            --bg: #050508; --surface: #0f0f1a; --surface2: #16162a; --surface3: #1e1e3a;
+            --border: #252545; --text: #f0f0f5; --text-dim: #9494b8; --text-muted: #5c5c8a;
+            --primary: #7c3aed; --primary-glow: rgba(124,58,237,0.3); --success: #10b981;
+            --warning: #f59e0b; --danger: #ef4444; --cyan: #06b6d4;
+            --gradient: linear-gradient(135deg, #7c3aed 0%, #06b6d4 100%);
+            --radius: 16px; --shadow: 0 10px 40px rgba(0,0,0,0.5);
+        }
+        body { font-family: 'Outfit', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; overflow-x: hidden; }
+        
+        /* Sidebar */
+        .sidebar { position: fixed; left: 0; top: 0; bottom: 0; width: 280px; background: var(--surface);
+            border-right: 1px solid var(--border); padding: 32px 20px; z-index: 100; display: flex; flex-direction: column; }
+        .logo { font-size: 24px; font-weight: 800; background: var(--gradient); -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent; text-align: center; margin-bottom: 40px; letter-spacing: 2px; }
+        .nav-item { display: flex; align-items: center; gap: 14px; padding: 14px 20px; border-radius: 14px;
+            color: var(--text-dim); cursor: pointer; transition: all 0.3s; font-size: 15px; font-weight: 500; margin-bottom: 4px; }
+        .nav-item:hover { background: var(--surface2); color: var(--text); transform: translateX(5px); }
+        .nav-item.active { background: var(--gradient); color: white; box-shadow: 0 8px 20px var(--primary-glow); }
+        
+        .sidebar-footer { margin-top: auto; padding: 20px; background: var(--surface2); border-radius: var(--radius); border: 1px solid var(--border); }
+        .status-badge { display: flex; align-items: center; gap: 10px; font-size: 13px; font-weight: 600; }
+        .pulse-dot { width: 10px; height: 10px; border-radius: 50%; }
+        .pulse-dot.ok { background: var(--success); box-shadow: 0 0 10px var(--success); animation: pulse 2s infinite; }
+        .pulse-dot.err { background: var(--danger); box-shadow: 0 0 10px var(--danger); }
+        @keyframes pulse { 0% { opacity: 1; transform: scale(1); } 50% { opacity: 0.5; transform: scale(1.2); } 100% { opacity: 1; transform: scale(1); } }
+
+        /* Main */
+        .main { margin-left: 280px; padding: 40px; max-width: 1400px; }
+        .page { display: none; opacity: 0; transform: translateY(10px); transition: all 0.4s ease; }
+        .page.active { display: block; opacity: 1; transform: translateY(0); }
+        h1 { font-size: 32px; font-weight: 700; margin-bottom: 12px; letter-spacing: -0.5px; }
+        .subtitle { color: var(--text-dim); font-size: 16px; margin-bottom: 40px; }
+
+        /* Widgets */
+        .grid-3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 24px; margin-bottom: 32px; }
+        .widget { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 32px; }
+        .widget-val { font-size: 42px; font-weight: 800; background: var(--gradient); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        .widget-label { color: var(--text-muted); font-size: 12px; text-transform: uppercase; letter-spacing: 1.5px; font-weight: 700; margin-top: 8px; }
+
+        .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 32px; margin-bottom: 24px; box-shadow: var(--shadow); }
+        .card-title { font-size: 18px; font-weight: 700; margin-bottom: 24px; display: flex; align-items: center; justify-content: space-between; }
+        
+        .btn { padding: 12px 28px; border: none; border-radius: 12px; font-family: inherit; font-size: 14px; font-weight: 700; cursor: pointer; transition: all 0.3s; 
+            display: inline-flex; align-items: center; gap: 10px; }
+        .btn-primary { background: var(--gradient); color: white; }
+        .btn-secondary { background: var(--surface2); color: var(--text); border: 1px solid var(--border); }
+        .btn-danger { background: rgba(239,68,68,0.1); color: var(--danger); border: 1px solid var(--danger); }
+        .btn-sm { padding: 8px 16px; font-size: 12px; border-radius: 8px; }
+
+        input, select, textarea { width: 100%; padding: 14px 18px; background: var(--surface2); border: 1px solid var(--border); border-radius: 12px; 
+            color: var(--text); font-family: inherit; font-size: 15px; margin-bottom: 20px; }
+        textarea { height: 250px; resize: vertical; line-height: 1.6; }
+
+        .template-item { background: var(--surface2); border: 1px solid var(--border); border-radius: 14px; padding: 20px; margin-bottom: 16px; 
+            cursor: pointer; transition: all 0.3s; position: relative; }
+        .template-item:hover { border-color: var(--primary); background: var(--surface3); }
+        .template-item.active { border-color: var(--primary); background: rgba(124,58,237,0.1); }
+        .template-name { font-weight: 700; font-size: 16px; margin-bottom: 4px; }
+        .template-sub { font-size: 12px; color: var(--text-dim); }
+
+        .preview-box { background: #000; border: 1px solid var(--border); border-radius: 12px; padding: 24px; font-family: 'Outfit', sans-serif; white-space: pre-wrap; font-size: 14px; line-height: 1.6; max-height: 500px; overflow-y: auto; }
+
+        .table-wrap { border-radius: var(--radius); overflow: hidden; border: 1px solid var(--border); }
+        table { width: 100%; border-collapse: collapse; font-size: 14px; background: var(--surface); }
+        th { text-align: left; padding: 18px 24px; background: var(--surface2); color: var(--text-muted); font-weight: 600; font-size: 11px; text-transform: uppercase; }
+        td { padding: 18px 24px; border-bottom: 1px solid var(--border); }
+
+        .modal { position: fixed; inset: 0; background: rgba(0,0,0,0.85); display: none; align-items: center; justify-content: center; z-index: 1000; backdrop-filter: blur(8px); }
+        .modal-content { background: var(--surface); padding: 40px; border-radius: 24px; width: 700px; border: 1px solid var(--border); box-shadow: var(--shadow); max-height: 90vh; overflow-y: auto; }
+
+        .placeholder-pill { display: inline-block; padding: 4px 10px; background: var(--surface3); border-radius: 6px; font-size: 11px; margin-right: 8px; cursor: pointer; color: var(--cyan); }
+        .placeholder-pill:hover { background: var(--primary); color: white; }
+    </style>
+</head>
+<body>
+    <nav class="sidebar">
+        <div class="logo">⚡ AUTOMAIL</div>
+        <div class="nav-item active" onclick="showPage('dashboard')">🏠 Overview</div>
+        <div class="nav-item" onclick="showPage('contacts')">👥 Lead Manager</div>
+        <div class="nav-item" onclick="showPage('templates')">📝 Drafts & Templates</div>
+        <div class="nav-item" onclick="showPage('logs')">📋 Delivery History</div>
+        
+        <div class="sidebar-footer">
+            <div class="status-badge">
+                <div class="pulse-dot ok" id="smtp-dot"></div>
+                <div id="smtp-text">System Online</div>
+            </div>
+        </div>
+    </nav>
+
+    <div class="main">
+        <!-- Dashboard -->
+        <div class="page active" id="page-dashboard">
+            <h1>Platform Overview</h1>
+            <div class="grid-3">
+                <div class="widget"><div class="widget-val" id="stat-total">0</div><div class="widget-label">Total Leads</div></div>
+                <div class="widget"><div class="widget-val" id="stat-sent">0</div><div class="widget-label">Total Sent</div></div>
+                <div class="widget"><div class="widget-val" id="stat-today">0</div><div class="widget-label">Sent Today</div></div>
+            </div>
+
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap:32px; margin-bottom:32px;">
+                <!-- Campaign Controls -->
+                <div class="card">
+                    <div class="card-title">🚀 Campaign Controls</div>
+                    <label>Target Role</label><input type="text" id="batch-role" value="AI Engineer" style="margin-bottom:12px;">
+                    <label>Global Resume (Fallback)</label><select id="batch-resume" style="margin-bottom:12px;"></select>
+                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-bottom:20px;">
+                        <div><label>Start From #</label><input type="number" id="batch-start" value="1"></div>
+                        <div><label>Batch Size</label><input type="number" id="batch-count" value="50"></div>
+                    </div>
+                    <div style="display:flex; gap:12px;">
+                        <button class="btn btn-primary" style="flex:2" onclick="startBatch()" id="btn-start">Start Campaign</button>
+                        <button class="btn btn-secondary" style="flex:1" onclick="pauseBatch()" id="btn-pause">Pause</button>
+                        <button class="btn btn-danger" onclick="stopBatch()" id="btn-stop">Stop</button>
+                    </div>
+                </div>
+
+                <!-- Live Progress -->
+                <div class="card" id="progress-card">
+                    <div class="card-title">📊 Live Progress</div>
+                    <div id="progress-status" style="font-size:24px; font-weight:800; margin-bottom:10px;">System Idle</div>
+                    <div style="background:var(--surface2); height:12px; border-radius:10px; overflow:hidden; margin-bottom:15px; border:1px solid var(--border);">
+                        <div id="progress-bar" style="width:0%; height:100%; background:var(--gradient); transition:width 0.5s;"></div>
+                    </div>
+                    <div id="progress-counts" style="color:var(--text-dim); font-weight:600;">0 / 0 leads processed</div>
+                    <div id="last-error" style="color:var(--danger); font-size:12px; margin-top:15px; display:none;"></div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-title">🔑 Google Authentication</div>
+                <div style="display:flex; gap:16px;">
+                    <input type="text" id="set-gmail" placeholder="Gmail Address" style="margin-bottom:0">
+                    <input type="password" id="set-pass" placeholder="App Password" style="margin-bottom:0">
+                    <button class="btn btn-primary" onclick="saveSettings()">Save & Test</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Contacts -->
+        <div class="page" id="page-contacts">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:32px;">
+                <h1>Lead Database</h1>
+                <button class="btn btn-primary" onclick="openAddModal()">➕ Add New Lead</button>
+            </div>
+            <div class="card">
+                <div class="table-wrap">
+                    <table>
+                        <thead><tr><th>#</th><th>Company</th><th>Email</th><th>Contact</th><th>Actions</th></tr></thead>
+                        <tbody id="contacts-tbody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Templates -->
+        <div class="page" id="page-templates">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:32px;">
+                <h1>Email Templates</h1>
+                <button class="btn btn-primary" onclick="openTemplateModal()">➕ Create Template</button>
+            </div>
+            <div style="display:grid; grid-template-columns: 350px 1fr; gap:24px;">
+                <div id="template-list">
+                    <!-- Injected by JS -->
+                </div>
+                <div id="template-preview-pane" class="card" style="display:none">
+                    <div class="card-title">
+                        <span id="preview-title">Template Preview</span>
+                        <div style="display:flex; gap:12px;">
+                            <button class="btn btn-secondary btn-sm" onclick="showLivePreview()">Live Preview (with Lead)</button>
+                            <button class="btn btn-secondary btn-sm" onclick="editCurrentTemplate()">Edit</button>
+                            <button class="btn btn-danger btn-sm" onclick="deleteCurrentTemplate()">Delete</button>
+                        </div>
+                    </div>
+                    <div style="margin-bottom:12px; font-size:14px;"><strong>Subject:</strong> <span id="preview-subject" style="color:var(--cyan)"></span></div>
+                    <div style="margin-bottom:12px; font-size:12px; color:var(--text-dim)">📎 <strong>Attachments:</strong> <span id="preview-attachments">None</span></div>
+                    <div class="preview-box" id="preview-body"></div>
+                </div>
+            </div>
+        </div>
+
+
+        <!-- History -->
+        <div class="page" id="page-logs">
+            <h1>Delivery History</h1>
+            <div class="card">
+                <div class="table-wrap">
+                    <table>
+                        <thead><tr><th>Time</th><th>Company</th><th>Email</th><th>Status</th></tr></thead>
+                        <tbody id="logs-tbody"></tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Template Modal -->
+    <div class="modal" id="template-modal">
+        <div class="modal-content">
+            <h2 id="temp-modal-title">Create Template</h2>
+            <p style="font-size:13px; color:var(--text-dim); margin-bottom:20px;">Use placeholders: 
+                <span class="placeholder-pill" onclick="insertPlaceholder('{company}')">{company}</span>
+                <span class="placeholder-pill" onclick="insertPlaceholder('{hr_name}')">{hr_name}</span>
+                <span class="placeholder-pill" onclick="insertPlaceholder('{role}')">{role}</span>
+            </p>
+            <input type="hidden" id="edit-temp-idx">
+            <input type="text" id="temp-subject" placeholder="Email Subject (supports placeholders)">
+            <textarea id="temp-body" placeholder="Email Body..."></textarea>
+            
+            <div style="margin-bottom:15px;">
+                <label style="font-size:12px; color:var(--text-muted); display:block; margin-bottom:5px;">Template Attachments (Multiple allowed)</label>
+                <div id="temp-attachments-list" style="display:flex; flex-wrap:wrap; gap:8px; margin-bottom:10px;"></div>
+                <div style="display:flex; gap:10px; align-items:center;">
+                    <input type="file" id="temp-attachment-file" style="margin-bottom:0; flex:1" onchange="uploadTemplateAttachment()" multiple>
+                    <button class="btn btn-secondary btn-sm" onclick="clearAttachments()">Clear All</button>
+                </div>
+            </div>
+
+            <div style="margin-top:20px; border-top:1px solid var(--border); padding-top:20px; display:flex; justify-content:space-between; align-items:center;">
+                <div style="font-size:12px; color:var(--text-dim)">
+                    Import Text: <input type="file" id="temp-file" style="width:100px; margin:0" onchange="uploadTemplateFile()">
+                </div>
+                <div style="display:flex; gap:12px;">
+                    <button class="btn btn-primary" onclick="saveTemplate()">Save Template</button>
+                    <button class="btn btn-secondary" onclick="closeTemplateModal()">Cancel</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Contact Modal -->
+    <div class="modal" id="contact-modal">
+        <div class="modal-content">
+            <h2>Lead Profile</h2>
+            <input type="hidden" id="edit-sr">
+            <input type="text" id="field-company" placeholder="Company">
+            <input type="text" id="field-email" placeholder="Email">
+            <input type="text" id="field-name" placeholder="Name">
+            <div style="display:flex; gap:12px; margin-top:20px;">
+                <button class="btn btn-primary" style="flex:1" onclick="saveContact()">Save</button>
+                <button class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast" style="position:fixed; bottom:24px; right:24px; background:var(--primary); color:white; padding:12px 24px; border-radius:12px; display:none; z-index:2000; box-shadow:var(--shadow);"></div>
+
+    <script>
+        const API = '';
+        let templates = [];
+        let currentTemplateIdx = -1;
+
+        function toast(m) {
+            const t = document.getElementById('toast');
+            t.textContent = m; t.style.display = 'block';
+            setTimeout(() => t.style.display = 'none', 3000);
+        }
+
+        function showPage(p) {
+            document.querySelectorAll('.page').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+            document.getElementById('page-'+p).classList.add('active');
+            if(p==='contacts') loadContacts();
+            if(p==='templates') loadTemplates();
+            if(p==='logs') loadLogs();
+            loadStats(); checkHealth();
+        }
+
+        async function loadStats() {
+            const res = await fetch(API+'/api/stats');
+            const d = await res.json();
+            document.getElementById('stat-total').textContent = d.total_contacts;
+            document.getElementById('stat-sent').textContent = d.sent_count;
+            document.getElementById('stat-today').textContent = d.today_sent;
+        }
+
+        async function checkHealth() {
+            const res = await fetch(API+'/api/health');
+            const d = await res.json();
+            const dot = document.getElementById('smtp-dot');
+            dot.className = d.smtp ? 'pulse-dot ok' : 'pulse-dot err';
+            document.getElementById('smtp-text').textContent = d.smtp ? 'System Online' : 'Auth Required';
+        }
+
+        async function saveSettings() {
+            const gmail = document.getElementById('set-gmail').value;
+            const pass = document.getElementById('set-pass').value;
+            await fetch(API+'/api/settings', { method:'POST', body: JSON.stringify({gmail_address:gmail, gmail_app_password:pass}) });
+            checkHealth();
+        }
+
+        // --- Template Logic ---
+        async function loadTemplates() {
+            const res = await fetch(API+'/api/templates');
+            const d = await res.json();
+            templates = d.templates;
+            renderTemplateList();
+        }
+
+        function renderTemplateList() {
+            const list = document.getElementById('template-list');
+            list.innerHTML = templates.map((t, i) => `
+                <div class="template-item ${currentTemplateIdx === i ? 'active' : ''}" onclick="selectTemplate(${i})">
+                    <div class="template-name">Template #${i+1}</div>
+                    <div class="template-sub">${t.subject.substring(0, 40)}...</div>
+                </div>
+            `).join('') || '<div style="color:var(--text-muted); text-align:center; padding:40px;">No templates created.</div>';
+        }
+
+        function selectTemplate(i) {
+            currentTemplateIdx = i;
+            renderTemplateList();
+            const pane = document.getElementById('template-preview-pane');
+            pane.style.display = 'block';
+            const t = templates[i];
+            document.getElementById('preview-subject').textContent = t.subject;
+            document.getElementById('preview-body').textContent = t.body;
+            document.getElementById('preview-attachments').textContent = t.attachments && t.attachments.length ? t.attachments.map(a => a.split('/').pop()).join(', ') : 'None';
+        }
+
+        let currentAttachments = [];
+
+        function openTemplateModal(idx = -1) {
+            document.getElementById('temp-modal-title').textContent = idx === -1 ? 'Create Template' : 'Edit Template';
+            document.getElementById('edit-temp-idx').value = idx;
+            const t = idx === -1 ? {subject:'', body:'', attachments:[]} : templates[idx];
+            document.getElementById('temp-subject').value = t.subject;
+            document.getElementById('temp-body').value = t.body;
+            currentAttachments = t.attachments || [];
+            renderAttachmentsList();
+            document.getElementById('template-modal').style.display = 'flex';
+        }
+
+        function renderAttachmentsList() {
+            const list = document.getElementById('temp-attachments-list');
+            list.innerHTML = currentAttachments.map((a, i) => `
+                <div style="background:var(--surface3); padding:4px 10px; border-radius:6px; font-size:11px; display:flex; align-items:center; gap:8px;">
+                    📎 ${a.split('/').pop()}
+                    <span style="color:var(--danger); cursor:pointer; font-weight:bold;" onclick="removeAttachment(${i})">×</span>
+                </div>
+            `).join('');
+        }
+
+        function removeAttachment(i) {
+            currentAttachments.splice(i, 1);
+            renderAttachmentsList();
+        }
+
+        function clearAttachments() {
+            currentAttachments = [];
+            renderAttachmentsList();
+        }
+
+        async function uploadTemplateAttachment() {
+            const files = document.getElementById('temp-attachment-file').files;
+            if(!files.length) return;
+            for(const file of files) {
+                const reader = new FileReader();
+                reader.onload = async (e) => {
+                    const b64 = e.target.result.split(',')[1];
+                    const res = await fetch(API+'/api/upload-template-asset', {
+                        method: 'POST',
+                        body: JSON.stringify({ filename: file.name, content: b64 })
+                    });
+                    const d = await res.json();
+                    if(d.success) {
+                        currentAttachments.push(d.path);
+                        renderAttachmentsList();
+                        toast(`Uploaded: ${file.name}`);
+                    } else toast('Upload failed: ' + d.error);
+                };
+                reader.readAsDataURL(file);
+            }
+        }
+
+        function closeTemplateModal() { document.getElementById('template-modal').style.display = 'none'; }
+        function closeModal() { document.getElementById('contact-modal').style.display = 'none'; }
+
+        async function saveTemplate() {
+            const idx = parseInt(document.getElementById('edit-temp-idx').value);
+            const newTemp = {
+                subject: document.getElementById('temp-subject').value,
+                body: document.getElementById('temp-body').value,
+                attachments: currentAttachments
+            };
+            if(idx === -1) templates.push(newTemp);
+            else templates[idx] = newTemp;
+            
+            await fetch(API+'/api/templates', { method:'POST', body: JSON.stringify({templates}) });
+            closeTemplateModal(); loadTemplates();
+        }
+
+        async function showLivePreview() {
+            const role = document.getElementById('batch-role').value;
+            const res = await fetch(`${API}/api/preview?idx=${currentTemplateIdx}&role=${role}`);
+            const d = await res.json();
+            document.getElementById('preview-subject').textContent = d.subject;
+            document.getElementById('preview-body').textContent = d.body;
+            toast('Loaded preview with a sample lead!');
+        }
+
+        function editCurrentTemplate() { openTemplateModal(currentTemplateIdx); }
+
+        async function deleteCurrentTemplate() {
+            if(confirm('Delete this template?')) {
+                templates.splice(currentTemplateIdx, 1);
+                currentTemplateIdx = -1;
+                await fetch(API+'/api/templates', { method:'POST', body: JSON.stringify({templates}) });
+                document.getElementById('template-preview-pane').style.display = 'none';
+                loadTemplates();
+            }
+        }
+
+        function insertPlaceholder(p) {
+            const area = document.getElementById('temp-body');
+            area.value += p; area.focus();
+        }
+
+        function uploadTemplateFile() {
+            const file = document.getElementById('temp-file').files[0];
+            if(!file) return;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                document.getElementById('temp-body').value = e.target.result;
+            };
+            reader.readAsText(file);
+        }
+
+        // --- Contact Logic ---
+        async function loadContacts() {
+            const res = await fetch(API+'/api/contacts');
+            const d = await res.json();
+            document.getElementById('contacts-tbody').innerHTML = d.contacts.map(c => `
+                <tr><td>${c.sr}</td><td><strong>${c.company}</strong></td><td>${c.email}</td><td>${c.name}</td>
+                <td>
+                    <button class="btn btn-secondary btn-sm" onclick="openEditModal(${c.sr}, '${c.company}', '${c.email}', '${c.name}')">Edit</button>
+                    <button class="btn btn-danger btn-sm" onclick="deleteContact(${c.sr})">Delete</button>
+                </td></tr>`).join('');
+        }
+
+        async function deleteContact(sr) {
+            if(confirm('Delete lead #'+sr+'?')) {
+                await fetch(API+'/api/delete-contact', { method:'POST', body:JSON.stringify({sr}) });
+                loadContacts(); loadStats();
+            }
+        }
+
+        function openAddModal() { /* ... similar to previous ... */ }
+        function openEditModal(sr, company, email, name) {
+            document.getElementById('edit-sr').value = sr;
+            document.getElementById('field-company').value = company;
+            document.getElementById('field-email').value = email;
+            document.getElementById('field-name').value = name;
+            document.getElementById('contact-modal').style.display = 'flex';
+        }
+        function closeModal() { document.getElementById('contact-modal').style.display = 'none'; }
+        async function saveContact() { /* ... similar to previous ... */ }
+
+        // --- Batch Logic ---
+        let pollInterval = null;
+
+        async function startBatch() {
+            const data = {
+                start: document.getElementById('batch-start').value,
+                count: document.getElementById('batch-count').value,
+                role: document.getElementById('batch-role').value,
+                resume: document.getElementById('batch-resume').value
+            };
+            const res = await fetch(API+'/api/send-batch', {method:'POST', body:JSON.stringify(data)});
+            const d = await res.json();
+            if(d.success) {
+                toast('Campaign started!');
+                startPolling();
+            } else toast('Failed: ' + d.error);
+        }
+
+        async function pauseBatch() {
+            const res = await fetch(API+'/api/pause', {method:'POST'});
+            const d = await res.json();
+            document.getElementById('btn-pause').textContent = d.paused ? 'Resume' : 'Pause';
+            toast(d.paused ? 'Campaign Paused' : 'Campaign Resumed');
+        }
+
+        async function stopBatch() {
+            if(confirm('Stop the current campaign?')) {
+                await fetch(API+'/api/stop', {method:'POST'});
+                toast('Stop requested...');
+            }
+        }
+
+        function startPolling() {
+            if(pollInterval) clearInterval(pollInterval);
+            pollInterval = setInterval(async () => {
+                const res = await fetch(API+'/api/progress');
+                const d = await res.json();
+                
+                const pct = d.total > 0 ? (d.current / d.total) * 100 : 0;
+                document.getElementById('progress-bar').style.width = pct + '%';
+                document.getElementById('progress-status').textContent = d.status;
+                document.getElementById('progress-counts').textContent = `${d.current} / ${d.total} leads processed`;
+                
+                if(d.last_error) {
+                    const err = document.getElementById('last-error');
+                    err.textContent = 'Last Error: ' + d.last_error;
+                    err.style.display = 'block';
+                }
+
+                if(d.status === 'completed' || d.status.includes('error')) {
+                    clearInterval(pollInterval);
+                    loadStats();
+                }
+            }, 1000);
+        }
+
+        async function loadLogs() {
+            const res = await fetch(API+'/api/logs');
+            const d = await res.json();
+            document.getElementById('logs-tbody').innerHTML = d.logs.map(l => `
+                <tr><td>${l.Timestamp}</td><td>${l.Company}</td><td>${l.Email}</td><td>${l.Status}</td></tr>`).join('');
+        }
+
+        // Init
+        showPage('dashboard');
+        fetch(API+'/api/resumes').then(r=>r.json()).then(d=>{
+            document.getElementById('batch-resume').innerHTML = d.resumes.map(r => `<option value="${r.key}">${r.label}</option>`).join('');
+        });
+    </script>
+</body>
+</html>
