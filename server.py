@@ -65,7 +65,8 @@ class AutomailHandler(BaseHTTPRequestHandler):
         elif parsed.path == "/api/preview":
             self.handle_preview(parsed)
         else:
-            super().do_GET()
+            self.send_error(404, "Not found")
+
 
     def do_POST(self):
         content_length = int(self.headers.get("Content-Length", 0))
