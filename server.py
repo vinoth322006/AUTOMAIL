@@ -76,6 +76,8 @@ class AutomailHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         if parsed.path == "/api/send-batch":
             self.handle_send_batch(data)
+        elif parsed.path == "/api/retry-failed":
+            self.handle_retry_failed(data)
         elif parsed.path == "/api/pause":
             AutomailHandler.is_paused = not AutomailHandler.is_paused
             self.send_json({"success": True, "paused": AutomailHandler.is_paused})
@@ -84,7 +86,10 @@ class AutomailHandler(BaseHTTPRequestHandler):
             self.send_json({"success": True})
         elif parsed.path == "/api/clear-logs":
             if os.path.exists(config.SEND_LOG_PATH):
-                try: os.remove(config.SEND_LOG_PATH)
+                try:
+                    with open(config.SEND_LOG_PATH, "w", encoding="utf-8", newline="") as f:
+                        writer = csv.writer(f)
+                        writer.writerow(["Timestamp", "Sr.No", "Company", "Email", "Name", "Subject", "Resume", "Status"])
                 except: pass
             self.send_json({"success": True})
         elif parsed.path == "/api/settings":
@@ -110,9 +115,11 @@ class AutomailHandler(BaseHTTPRequestHandler):
         if not filename or not content_b64:
             return self.send_json({"error": "Missing data"}, 400)
         
-        # Security: sanitize filename
         filename = re.sub(r'[^a-zA-Z0-9._-]', '_', filename)
-        path = os.path.join(config.BASE_DIR, "template_assets", filename)
+        asset_dir = os.path.join(config.BASE_DIR, "template_assets")
+        if not os.path.exists(asset_dir):
+            os.makedirs(asset_dir)
+        path = os.path.join(asset_dir, filename)
         
         try:
             with open(path, "wb") as f:
@@ -135,7 +142,7 @@ class AutomailHandler(BaseHTTPRequestHandler):
         params = parse_qs(parsed.query)
         idx = int(params.get("idx", [0])[0])
         sr = int(params.get("sr", [1])[0])
-        role = params.get("role", ["AI Engineer"])[0]
+        role = params.get("role", [config.TARGET_ROLE])[0]
         
         contacts = load_contacts()
         contact = next((c for c in contacts if c["sr"] == sr), contacts[0] if contacts else {})
@@ -159,28 +166,52 @@ class AutomailHandler(BaseHTTPRequestHandler):
         params = parse_qs(parsed.query)
         start = int(params.get("start", [1])[0])
         count = int(params.get("count", [50])[0])
-        contacts = load_contacts(start=start, count=count)
-        self.send_json({"contacts": contacts})
+        search = params.get("search", [""])[0].lower()
+        
+        contacts = load_contacts(start=1, count=99999)
+        if search:
+            contacts = [c for c in contacts if search in c["company"].lower() or search in c["email"].lower() or search in c["name"].lower()]
+        
+        total_filtered = len(contacts)
+        contacts = contacts[start-1:start-1+count]
+        self.send_json({"contacts": contacts, "total": total_filtered})
 
     def handle_get_stats(self):
         contacts = load_contacts(start=1, count=99999)
         sent_count = 0
+        failed_count = 0
+        bounced_count = 0
         today_sent = 0
         today_str = date.today().isoformat()
+        
+        history_by_day = defaultdict(int)
+        
         if os.path.exists(config.SEND_LOG_PATH):
             with open(config.SEND_LOG_PATH, "r", encoding="utf-8") as f:
                 reader = csv.DictReader(f)
                 for row in reader:
-                    sent_count += 1
+                    status = row.get("Status", "")
                     ts = row.get("Timestamp", "")
-                    if ts[:10] == today_str and row.get("Status") == "SENT":
-                        today_sent += 1
+                    day = ts[:10]
+                    if "SENT" in status:
+                        sent_count += 1
+                        history_by_day[day] += 1
+                        if day == today_str: today_sent += 1
+                    elif "FAILED" in status:
+                        failed_count += 1
+                        if "Bounced" in status: bounced_count += 1
         
+        sorted_days = sorted(history_by_day.keys())[-7:]
+        daily_stats = [{"day": d, "count": history_by_day[d]} for d in sorted_days]
+
         self.send_json({
-            "total_contacts": len(contacts),
+            "total_leads": len(contacts),
             "sent_count": sent_count,
+            "failed_count": failed_count,
+            "bounced_count": bounced_count,
             "today_sent": today_sent,
-            "daily_limit": config.MAX_DAILY_EMAILS
+            "daily_limit": config.MAX_DAILY_EMAILS,
+            "daily_stats": daily_stats
         })
 
     def handle_get_resumes(self):
@@ -193,9 +224,11 @@ class AutomailHandler(BaseHTTPRequestHandler):
     def handle_get_logs(self):
         logs = []
         if os.path.exists(config.SEND_LOG_PATH):
-            with open(config.SEND_LOG_PATH, "r", encoding="utf-8") as f:
-                logs = list(csv.DictReader(f))
-        self.send_json({"logs": logs[::-1][:100]})
+            try:
+                with open(config.SEND_LOG_PATH, "r", encoding="utf-8") as f:
+                    logs = list(csv.DictReader(f))
+            except: pass
+        self.send_json({"logs": logs[::-1][:200]})
 
     def handle_export_logs(self):
         if not os.path.exists(config.SEND_LOG_PATH):
@@ -204,7 +237,7 @@ class AutomailHandler(BaseHTTPRequestHandler):
         with open(config.SEND_LOG_PATH, "rb") as f:
             self.send_response(200)
             self.send_header("Content-Type", "text/csv")
-            self.send_header("Content-Disposition", 'attachment; filename="send_history.csv"')
+            self.send_header("Content-Disposition", 'attachment; filename="automail_history.csv"')
             self.end_headers()
             self.wfile.write(f.read())
 
@@ -212,13 +245,14 @@ class AutomailHandler(BaseHTTPRequestHandler):
         try:
             config.GMAIL_ADDRESS = data.get("gmail_address", config.GMAIL_ADDRESS)
             config.GMAIL_APP_PASSWORD = data.get("gmail_app_password", config.GMAIL_APP_PASSWORD)
+            config.DELAY_BETWEEN_EMAILS = int(data.get("delay", config.DELAY_BETWEEN_EMAILS))
+            config.TARGET_ROLE = data.get("target_role", config.TARGET_ROLE)
             
-            # Persist to .env
             env_path = os.path.join(config.BASE_DIR, ".env")
             with open(env_path, "w") as f:
                 f.write(f"GMAIL_ADDRESS={config.GMAIL_ADDRESS}\n")
                 f.write(f"GMAIL_APP_PASSWORD={config.GMAIL_APP_PASSWORD}\n")
-            
+                f.write(f"TARGET_ROLE=\"{config.TARGET_ROLE}\"\n")
             self.send_json({"success": True})
         except Exception as e:
             self.send_json({"error": str(e)}, 500)
@@ -233,7 +267,6 @@ class AutomailHandler(BaseHTTPRequestHandler):
             with open(filepath, "wb") as f:
                 f.write(base64.b64decode(b64data))
             config.HR_EXCEL_PATH = filepath
-            # Update config.py
             cfg_path = os.path.join(config.BASE_DIR, "config.py")
             with open(cfg_path, "r") as f: content = f.read()
             content = re.sub(r'HR_EXCEL_PATH\s*=\s*.*', f'HR_EXCEL_PATH = os.path.join(BASE_DIR, "{filename}")', content)
@@ -310,8 +343,7 @@ class AutomailHandler(BaseHTTPRequestHandler):
             self.send_json({"error": str(e)}, 500)
 
     def handle_send_batch(self, data):
-        if AutomailHandler.is_sending:
-            return self.send_json({"error": "Batch already running"}, 400)
+        if AutomailHandler.is_sending: return self.send_json({"error": "Batch already running"}, 400)
         start = int(data.get("start", 1))
         count = int(data.get("count", 50))
         role = data.get("role", config.TARGET_ROLE)
@@ -321,12 +353,14 @@ class AutomailHandler(BaseHTTPRequestHandler):
 
     def handle_retry_failed(self, data):
         if AutomailHandler.is_sending: return self.send_json({"error": "Busy"}, 400)
-        threading.Thread(target=self._batch_worker, args=(1, 999, config.TARGET_ROLE, "vinoth_main", True), daemon=True).start()
+        role = data.get("role", config.TARGET_ROLE)
+        resume = data.get("resume", "vinoth_main")
+        threading.Thread(target=self._batch_worker, args=(1, 9999, role, resume, True), daemon=True).start()
         self.send_json({"success": True})
 
     def handle_health_check(self):
         import smtplib
-        result = {"smtp": False, "smtp_error": ""}
+        result = {"smtp": False, "smtp_error": "", "imap": False, "imap_error": ""}
         if config.GMAIL_ADDRESS and config.GMAIL_APP_PASSWORD:
             try:
                 with smtplib.SMTP(config.SMTP_SERVER, config.SMTP_PORT, timeout=8) as server:
@@ -334,6 +368,13 @@ class AutomailHandler(BaseHTTPRequestHandler):
                     server.login(config.GMAIL_ADDRESS, config.GMAIL_APP_PASSWORD)
                 result["smtp"] = True
             except Exception as e: result["smtp_error"] = str(e)
+            try:
+                import imaplib
+                mail = imaplib.IMAP4_SSL("imap.gmail.com")
+                mail.login(config.GMAIL_ADDRESS, config.GMAIL_APP_PASSWORD)
+                mail.logout()
+                result["imap"] = True
+            except Exception as e: result["imap_error"] = str(e)
         self.send_json(result)
 
     def handle_debug_log(self, parsed):
@@ -354,16 +395,17 @@ class AutomailHandler(BaseHTTPRequestHandler):
         AutomailHandler.is_paused = False
         AutomailHandler.stop_requested = False
         try:
-            contacts = load_contacts(start=start, count=count)
+            all_contacts = load_contacts(start=1, count=99999)
             if retry_failed:
-                failed = set()
+                failed_emails = set()
                 if os.path.exists(config.SEND_LOG_PATH):
                     with open(config.SEND_LOG_PATH, "r") as f:
                         for r in csv.DictReader(f):
-                            if "FAILED" in r.get("Status", ""): failed.add(r.get("Email", ""))
-                contacts = [c for c in contacts if c["email"] in failed]
+                            if "FAILED" in r.get("Status", ""): failed_emails.add(r.get("Email", ""))
+                contacts = [c for c in all_contacts if c["email"] in failed_emails]
             else:
                 sent = get_sent_emails()
+                contacts = all_contacts[start-1 : start-1+count]
                 contacts = [c for c in contacts if c["email"] not in sent]
             
             AutomailHandler.send_progress = {"current": 0, "total": len(contacts), "status": "running"}
@@ -372,42 +414,30 @@ class AutomailHandler(BaseHTTPRequestHandler):
             for i, c in enumerate(contacts):
                 while AutomailHandler.is_paused and not AutomailHandler.stop_requested: time.sleep(1)
                 if AutomailHandler.stop_requested: break
-                
                 AutomailHandler.send_progress["current"] = i + 1
                 AutomailHandler.send_progress["status"] = f"Sending to {c['company']}..."
                 
                 email_data = generate_email(c, role)
-                # Use template-specific attachments if they exist, otherwise use global resume
                 current_attachments = email_data.get("attachments", [])
-                if not current_attachments:
-                    current_attachments = [resume_path]
+                if not current_attachments: current_attachments = [resume_path]
                 else:
-                    # Resolve paths relative to BASE_DIR if they are not absolute
-                    current_attachments = [
-                        (os.path.join(config.BASE_DIR, p) if not os.path.isabs(p) else p)
-                        for p in current_attachments
-                    ]
+                    current_attachments = [(os.path.join(config.BASE_DIR, p) if not os.path.isabs(p) else p) for p in current_attachments]
 
                 res = send_email(c["email"], email_data["subject"], email_data["body"], current_attachments)
                 
-                if res is True:
-                    status = "SENT"
+                if res is True: status = "SENT"
                 else:
-                    status = "FAILED"
-                    # Capture the specific error if possible
-                    error_msg = str(res) if res and res is not False else "Unknown Error"
-                    AutomailHandler.send_progress["last_error"] = error_msg
-                    AutomailHandler.send_progress["status"] = f"Error sending to {c['email']}: {error_msg}"
+                    status = f"FAILED ({str(res)})"
+                    AutomailHandler.send_progress["last_error"] = str(res)
                 
                 log_to_csv(c, email_data["subject"], status, os.path.basename(resume_path))
-                
                 if i < len(contacts) - 1: time.sleep(config.DELAY_BETWEEN_EMAILS)
             
             AutomailHandler.send_progress["status"] = "completed"
         except Exception as e:
             AutomailHandler.send_progress["status"] = f"error: {str(e)}"
-        finally:
-            AutomailHandler.is_sending = False
+            traceback.print_exc()
+        finally: AutomailHandler.is_sending = False
 
 def main():
     def bounce_loop():

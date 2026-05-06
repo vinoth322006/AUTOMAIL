@@ -406,12 +406,9 @@ def generate_email(contact, target_role=None):
         template = EMAIL_TEMPLATES[template_idx]
         debug(f"Template #{template_idx+1} selected for '{company}' (hash={hash_val % 1000})")
 
-        subject = template["subject"].format(
-            hr_name=hr_name, company=company, role=target_role
-        )
-        body = template["body"].format(
-            hr_name=hr_name, company=company, role=target_role
-        )
+        subject = template["subject"].replace("{hr_name}", hr_name).replace("{company}", company).replace("{role}", target_role)
+        body = template["body"].replace("{hr_name}", hr_name).replace("{company}", company).replace("{role}", target_role)
+
 
         # Sanity checks on output
         assert len(subject) > 0, "Generated empty subject"
